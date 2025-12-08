@@ -2,13 +2,17 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import dotenv from 'dotenv'
 import twilio from 'twilio'
+import formbody from '@fastify/formbody'
 
 dotenv.config()
 
 const fastify = Fastify({ logger: true })
-fastify.register(cors, { origin: true })
 
-// ✅ יצירת Twilio client – חייב להיות לפני /call
+// ✅ פלאגינים – חייבים להיות לפני ה-routes
+fastify.register(cors, { origin: true })
+fastify.register(formbody)
+
+// ✅ Twilio client
 const twilioClient = twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
@@ -20,7 +24,7 @@ fastify.get('/', async () => {
 })
 
 /* ===========================
-   ✅ כאן שמים את /call
+   ✅ /call – חיוג יוצא
    =========================== */
 
 fastify.post('/call', async (request, reply) => {
@@ -46,25 +50,34 @@ fastify.post('/call', async (request, reply) => {
       success: true,
       callSid: call.sid
     })
-
   } catch (err) {
-    console.error('❌ TWILIO ERROR (FULL):', err)
+    console.error('❌ TWILIO ERROR:', err)
     reply.code(500).send({ error: err.message })
   }
 })
 
 /* ===========================
-   ✅ /voice — Twilio Webhook
+   ✅ /voice – Twilio Webhook
    =========================== */
 
 fastify.post('/voice', async (request, reply) => {
-  reply.type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+  console.log('📞 Twilio /voice webhook received')
+  console.log('Headers:', request.headers)
+  console.log('Body:', request.body)
+
+  reply
+    .code(200)
+    .type('text/xml')
+    .send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say language="he-IL">
-    שלום, זו שיחת בדיקה. החיבור עובד.
+    שלום, זו שיחת בדיקה. החיבור עובד מושלם.
   </Say>
 </Response>`)
 })
 
-// ✅ הפעלת השרת – תמיד בסוף
+/* ===========================
+   ✅ הפעלת השרת – תמיד בסוף
+   =========================== */
+
 fastify.listen({ port: process.env.PORT || 8080, host: '0.0.0.0' })
