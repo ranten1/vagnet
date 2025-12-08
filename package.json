@@ -1,0 +1,21 @@
+{
+  "name": "voice-agent-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Hebrew Voice Agent Server using Twilio and ElevenLabs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "fastify": "^4.26.0",
+    "@fastify/websocket": "^9.0.0",
+    "ws": "^8.16.0",
+    "twilio": "^4.20.0",
+    "dotenv": "^16.4.5"
+  }
+}
