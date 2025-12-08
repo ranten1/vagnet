@@ -6,12 +6,9 @@ import twilio from 'twilio'
 dotenv.config()
 
 const fastify = Fastify({ logger: true })
-
 fastify.register(cors, { origin: true })
 
-const PORT = process.env.PORT || 8080
-
-// ✅ Twilio client (חייב להיות לפני ה-endpoints)
+// ✅ יצירת Twilio client – חייב להיות לפני /call
 const twilioClient = twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
@@ -22,53 +19,52 @@ fastify.get('/', async () => {
   return { status: 'ok' }
 })
 
-// 🚨⬇⬇⬇ כאן בדיוק שמים את הקוד ⬇⬇⬇🚨
+/* ===========================
+   ✅ כאן שמים את /call
+   =========================== */
+
 fastify.post('/call', async (request, reply) => {
-  const { number, prompt } = request.body || {}
+  const { number } = request.body || {}
 
   if (!number) {
-    return reply.code(400).send({
-      success: false,
-      error: 'number is required'
-    })
+    return reply.code(400).send({ error: 'number missing' })
   }
 
-  console.log('📞 Initiating real Twilio call to:', number)
-  console.log('🧠 Mission:', prompt)
+  console.log('📞 REAL CALL →', number)
 
   try {
     const call = await twilioClient.calls.create({
       to: number,
       from: process.env.TWILIO_PHONE_NUMBER,
-      applicationSid: process.env.TWILIO_TWIML_APP_SID
+      url: 'https://vagnet-production.up.railway.app/voice',
+      method: 'POST'
     })
 
-    console.log('✅ Twilio call created:', call.sid)
+    console.log('✅ TWILIO SID:', call.sid)
 
     reply.send({
       success: true,
       callSid: call.sid
     })
+
   } catch (err) {
-    console.error('❌ Twilio call failed:', err)
-    reply.code(500).send({
-      success: false,
-      error: err.message
-    })
+    console.error('❌ TWILIO ERROR (FULL):', err)
+    reply.code(500).send({ error: err.message })
   }
 })
-// 🚨⬆⬆⬆ עד כאן הקוד ⬆⬆⬆🚨
 
-// ✅ Optional: Twilio Voice webhook
+/* ===========================
+   ✅ /voice — Twilio Webhook
+   =========================== */
+
 fastify.post('/voice', async (request, reply) => {
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+  reply.type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say language="he-IL">
-    שלום, זו שיחת בדיקה.
+    שלום, זו שיחת בדיקה. החיבור עובד.
   </Say>
-</Response>`
-  reply.type('text/xml').send(twiml)
+</Response>`)
 })
 
-// ✅ Start server – חייב להיות בסוף
-fastify.listen({ port: PORT, host: '0.0.0.0' })
+// ✅ הפעלת השרת – תמיד בסוף
+fastify.listen({ port: process.env.PORT || 8080, host: '0.0.0.0' })
