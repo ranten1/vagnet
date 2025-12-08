@@ -2,49 +2,45 @@ import cors from '@fastify/cors'
 fastify.register(cors, { origin: true })
 import Fastify from 'fastify'
 import websocket from '@fastify/websocket'
-import twilio from 'twilio'
+import cors from '@fastify/cors'
 import dotenv from 'dotenv'
 
 dotenv.config()
 
 const fastify = Fastify({ logger: true })
 fastify.register(websocket)
+fastify.register(cors, { origin: true })
 
 const PORT = process.env.PORT || 8080
 
-// Health check
+// ✅ Health check
 fastify.get('/', async () => {
   return { status: 'ok', message: 'Voice Agent Server is running' }
 })
 
-// Twilio Voice Webhook
+// ✅ NEW: endpoint for app / agent
+fastify.post('/call', async (request, reply) => {
+  console.log('Incoming call request:', request.body)
+
+  return {
+    success: true,
+    message: 'Call request received'
+  }
+})
+
+// (אופציונלי) Twilio webhook
 fastify.post('/voice', async (request, reply) => {
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say language="he-IL" voice="Polly.Carmit">
-    שלום, זהו סרבר בדיקה. החיבור ל-Twilio עובד בהצלחה.
-  </Say>
-  <Pause length="1"/>
   <Say language="he-IL">
-    ניתן כעת להוסיף לוגיקת סוכן קולי.
+    שלום, זהו שרת בדיקה. החיבור עובד.
   </Say>
 </Response>`
 
-  reply
-    .type('text/xml')
-    .send(twiml)
+  reply.type('text/xml').send(twiml)
 })
 
-// WebSocket endpoint (להרחבה עתידית – Media Streams)
-fastify.get('/media', { websocket: true }, (connection) => {
-  console.log('WebSocket connected')
-
-  connection.socket.on('message', (message) => {
-    console.log('Received WS message:', message.toString())
-  })
-})
-
-// Start server
+// ✅ Start server (חייב להיות בסוף)
 const start = async () => {
   try {
     await fastify.listen({ port: PORT, host: '0.0.0.0' })
@@ -56,4 +52,5 @@ const start = async () => {
 }
 
 start()
+
 
