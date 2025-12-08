@@ -12,8 +12,9 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@fastify/cors": "^8.5.0",
     "fastify": "^4.26.0",
+    "@fastify/cors": "^8.5.0",
+    "@fastify/formbody": "^8.0.0",
     "@fastify/websocket": "^9.0.0",
     "ws": "^8.16.0",
     "twilio": "^4.20.0",
