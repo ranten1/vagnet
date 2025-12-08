@@ -1,5 +1,3 @@
-import cors from '@fastify/cors'
-fastify.register(cors, { origin: true })
 import Fastify from 'fastify'
 import websocket from '@fastify/websocket'
 import cors from '@fastify/cors'
@@ -8,6 +6,7 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 const fastify = Fastify({ logger: true })
+
 fastify.register(websocket)
 fastify.register(cors, { origin: true })
 
@@ -18,9 +17,9 @@ fastify.get('/', async () => {
   return { status: 'ok', message: 'Voice Agent Server is running' }
 })
 
-// ✅ NEW: endpoint for app / agent
+// ✅ Endpoint for app / agent
 fastify.post('/call', async (request, reply) => {
-  console.log('Incoming call request:', request.body)
+  console.log('✅ Incoming call request:', request.body)
 
   return {
     success: true,
@@ -28,7 +27,7 @@ fastify.post('/call', async (request, reply) => {
   }
 })
 
-// (אופציונלי) Twilio webhook
+// ✅ Twilio webhook
 fastify.post('/voice', async (request, reply) => {
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -40,7 +39,7 @@ fastify.post('/voice', async (request, reply) => {
   reply.type('text/xml').send(twiml)
 })
 
-// ✅ Start server (חייב להיות בסוף)
+// ✅ Start server
 const start = async () => {
   try {
     await fastify.listen({ port: PORT, host: '0.0.0.0' })
@@ -52,5 +51,3 @@ const start = async () => {
 }
 
 start()
-
-
