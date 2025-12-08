@@ -1,3 +1,5 @@
+console.log('🔥 ACTUAL SERVER.JS LOADED – /CALL SHOULD EXIST 🔥')
+
 import Fastify from 'fastify'
 import websocket from '@fastify/websocket'
 import cors from '@fastify/cors'
@@ -51,3 +53,4 @@ const start = async () => {
 }
 
 start()
+
