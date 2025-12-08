@@ -1,3 +1,5 @@
+import cors from '@fastify/cors'
+fastify.register(cors, { origin: true })
 import Fastify from 'fastify'
 import websocket from '@fastify/websocket'
 import twilio from 'twilio'
@@ -54,3 +56,4 @@ const start = async () => {
 }
 
 start()
+
