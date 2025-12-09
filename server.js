@@ -25,12 +25,12 @@ const twilioClient = twilio(
 )
 
 /* ===========================
-   Health / Ping
+   Health
    =========================== */
 fastify.get('/ping', async () => ({ pong: true }))
 
 /* ===========================
-   CALL – initiate outbound call
+   Outbound call
    =========================== */
 fastify.post('/call', async (request, reply) => {
   const { number } = request.body || {}
@@ -38,26 +38,18 @@ fastify.post('/call', async (request, reply) => {
     return reply.code(400).send({ error: 'number is required' })
   }
 
-  try {
-    const call = await twilioClient.calls.create({
-      to: number,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      url: 'https://vagnet-production.up.railway.app/voice',
-      method: 'POST'
-    })
+  const call = await twilioClient.calls.create({
+    to: number,
+    from: process.env.TWILIO_PHONE_NUMBER,
+    url: 'https://vagnet-production.up.railway.app/voice',
+    method: 'POST'
+  })
 
-    reply.send({
-      success: true,
-      callSid: call.sid
-    })
-  } catch (err) {
-    fastify.log.error(err)
-    reply.code(500).send({ error: err.message })
-  }
+  reply.send({ success: true, callSid: call.sid })
 })
 
 /* ===========================
-   VOICE – TwiML with Stream
+   Voice → Media Stream
    =========================== */
 fastify.post('/voice', async (request, reply) => {
   reply
@@ -71,22 +63,70 @@ fastify.post('/voice', async (request, reply) => {
 })
 
 /* ===========================
-   STREAM – Media Streams WS
+   ElevenLabs → μ-law (PoC)
+   =========================== */
+async function elevenLabsToMulawBase64(text) {
+  const res = await fetch(
+    'https://api.elevenlabs.io/v1/text-to-speech/JgAHWUAGTYZQ4STOPsRF/stream',
+    {
+      method: 'POST',
+      headers: {
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_multilingual_v2'
+      })
+    }
+  )
+
+  const chunks = []
+  for await (const chunk of res.body) {
+    chunks.push(chunk)
+  }
+
+  const audioBuffer = Buffer.concat(chunks)
+
+  // ⚠️ PoC פשוט:
+  // מניחים שהאודיו כבר 8k או קרוב – רק לצורך בדיקה
+  // (בשלב הבא נעשה downsample + μ-law כמו שצריך)
+  return audioBuffer.toString('base64')
+}
+
+/* ===========================
+   Media Stream WS
    =========================== */
 fastify.get('/stream', { websocket: true }, (connection) => {
   console.log('🎧 Twilio Media Stream connected')
 
-  connection.socket.on('message', (message) => {
-    const data = JSON.parse(message.toString())
+  let streamSid = null
+  let started = false
+
+  connection.socket.on('message', async (msg) => {
+    const data = JSON.parse(msg.toString())
 
     if (data.event === 'start') {
+      streamSid = data.streamSid
       console.log('▶ Stream started')
-      console.log('Stream SID:', data.streamSid)
-    }
 
-    if (data.event === 'media') {
-      // כאן מגיע אודיו מהטלפון (μ-law base64)
-      // data.media.payload
+      if (!started) {
+        started = true
+
+        const base64Audio = await elevenLabsToMulawBase64(
+          'שלום, אני סוכן קולי חכם. איך אפשר לעזור לך?'
+        )
+
+        const mediaMsg = {
+          event: 'media',
+          streamSid,
+          media: {
+            payload: base64Audio
+          }
+        }
+
+        connection.socket.send(JSON.stringify(mediaMsg))
+      }
     }
 
     if (data.event === 'stop') {
@@ -108,7 +148,7 @@ const start = async () => {
       port: process.env.PORT || 8080,
       host: '0.0.0.0'
     })
-    console.log('✅ Voice Agent server running (Media Streams)')
+    console.log('✅ Voice Agent server running')
   } catch (err) {
     fastify.log.error(err)
     process.exit(1)
