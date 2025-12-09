@@ -24,29 +24,69 @@ const twilioClient = twilio(
 fastify.get('/ping', async () => ({ pong: true }))
 
 /* ===========================
-   ✅ SERVE AUDIO WITH CORRECT MIME
+   AUDIO — GET + HEAD + RANGE
    =========================== */
-fastify.get('/audio/:file', async (request, reply) => {
-  const filePath = path.join('public', 'audio', request.params.file)
+fastify.route({
+  method: ['GET', 'HEAD'],
+  url: '/audio/:file',
+  handler: async (request, reply) => {
+    const filePath = path.join(
+      process.cwd(),
+      'public',
+      'audio',
+      request.params.file
+    )
 
-  if (!fs.existsSync(filePath)) {
-    return reply.code(404).send('Not found')
+    if (!fs.existsSync(filePath)) {
+      return reply.code(404).send()
+    }
+
+    const stat = fs.statSync(filePath)
+    const fileSize = stat.size
+    const range = request.headers.range
+
+    reply.headers({
+      'Content-Type': 'audio/mpeg',
+      'Accept-Ranges': 'bytes',
+      'Content-Length': fileSize,
+      'Cache-Control': 'no-store'
+    })
+
+    // HEAD request
+    if (request.method === 'HEAD') {
+      return reply.code(200).send()
+    }
+
+    // Range request
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-')
+      const start = parseInt(parts[0], 10)
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
+
+      reply.code(206)
+      reply.headers({
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Content-Length': end - start + 1
+      })
+
+      return reply.send(
+        fs.createReadStream(filePath, { start, end })
+      )
+    }
+
+    // Normal GET
+    return reply.send(fs.createReadStream(filePath))
   }
-
-  reply
-    .header('Content-Type', 'audio/mpeg')
-    .header('Cache-Control', 'no-store')
-    .send(fs.createReadStream(filePath))
 })
 
 /* ===========================
-   CALL – initiate call
+   CALL (HARDCODE FILE)
    =========================== */
 fastify.post('/call', async (request, reply) => {
   const { number } = request.body || {}
-  if (!number) return reply.code(400).send({ error: 'number required' })
+  if (!number) return reply.code(400).send()
 
-  const filename = 'audio-1765262158067.mp3' // הארדקוד לבדיקת סופית
+  const filename = 'audio-1765262158067.mp3' // שכבר בדקת בדפדפן
 
   const call = await twilioClient.calls.create({
     to: number,
@@ -59,7 +99,7 @@ fastify.post('/call', async (request, reply) => {
 })
 
 /* ===========================
-   VOICE – Play via /audio
+   VOICE
    =========================== */
 fastify.post('/voice', async (request, reply) => {
   const file = request.query.file
