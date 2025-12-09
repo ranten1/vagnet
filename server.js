@@ -13,12 +13,7 @@ dotenv.config()
 const fastify = Fastify({ logger: true })
 
 /* ===========================
-   GLOBAL STATE (Stage 1)
-   =========================== */
-let lastAudioFile = null
-
-/* ===========================
-   Plugins – חייב לפני routes
+   Plugins
    =========================== */
 fastify.register(cors, { origin: true })
 fastify.register(formbody)
@@ -40,47 +35,25 @@ const twilioClient = twilio(
    Health Check
    =========================== */
 fastify.get('/', async () => {
-  return { status: 'ok', message: 'Server is running (Stage 1)' }
+  return { status: 'ok', message: 'Server running' }
 })
 
 /* ===========================
-   /call – יצירת שיחה יוצאת
+   /call – יוצר אודיו ואז מחייג
    =========================== */
 fastify.post('/call', async (request, reply) => {
-  const { number } = request.body || {}
+  const { number, prompt } = request.body || {}
 
   if (!number) {
     return reply.code(400).send({ error: 'number is required' })
   }
 
-  try {
-    const call = await twilioClient.calls.create({
-      to: number,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      url: 'https://vagnet-production.up.railway.app/voice',
-      method: 'POST'
-    })
-
-    reply.send({
-      success: true,
-      callSid: call.sid
-    })
-  } catch (err) {
-    fastify.log.error(err)
-    reply.code(500).send({ error: err.message })
-  }
-})
-
-/* ===========================
-   /generate-audio – ElevenLabs
-   יוצר MP3 ושומר אותו
-   =========================== */
-fastify.get('/generate-audio', async (request, reply) => {
   const text =
-    request.query.text ||
-    'שלום, זו שיחה אוטומטית בקול אנושי בעברית'
+    prompt ||
+    'שלום, זו שיחה אוטומטית עם קול אנושי בעברית. תודה שהקדשת לנו זמן.'
 
   try {
+    /* --- 1. Generate audio with ElevenLabs --- */
     const response = await fetch(
       'https://api.elevenlabs.io/v1/text-to-speech/JgAHWUAGTYZQ4STOPsRF',
       {
@@ -96,6 +69,10 @@ fastify.get('/generate-audio', async (request, reply) => {
       }
     )
 
+    if (!response.ok) {
+      throw new Error('ElevenLabs audio generation failed')
+    }
+
     const buffer = Buffer.from(await response.arrayBuffer())
     const filename = `audio-${Date.now()}.mp3`
     const filePath = path.join(
@@ -107,32 +84,47 @@ fastify.get('/generate-audio', async (request, reply) => {
 
     await fs.promises.writeFile(filePath, buffer)
 
-    // ✅ שמירת שם הקובץ האחרון
-    lastAudioFile = filename
+    const audioUrl =
+      `https://vagnet-production.up.railway.app/public/audio/${filename}`
+
+    /* --- 2. Create Twilio Call --- */
+    const call = await twilioClient.calls.create({
+      to: number,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      url: `https://vagnet-production.up.railway.app/voice?audio=${encodeURIComponent(
+        audioUrl
+      )}`,
+      method: 'POST'
+    })
 
     reply.send({
-      url: `https://vagnet-production.up.railway.app/public/audio/${filename}`
+      success: true,
+      callSid: call.sid
     })
   } catch (err) {
     fastify.log.error(err)
-    reply.code(500).send({ error: 'Audio generation failed' })
+    reply.code(500).send({ error: err.message })
   }
 })
 
 /* ===========================
    /voice – Twilio Webhook
-   מנגן MP3 סטטי בלבד
+   מנגן MP3 קיים בלבד
    =========================== */
 fastify.post('/voice', async (request, reply) => {
-  // אם מסיבה כלשהי האודיו לא מוכן – fallback
-  if (!lastAudioFile) {
+  const audioUrl =
+    request.query.audio ||
+    request.body?.audio ||
+    null
+
+  if (!audioUrl) {
     return reply
       .code(200)
       .header('Content-Type', 'text/xml')
       .send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say language="en-US">
-    Audio is not ready yet. Please try again later.
+    Audio file not found.
   </Say>
 </Response>`)
   }
@@ -142,10 +134,8 @@ fastify.post('/voice', async (request, reply) => {
     .header('Content-Type', 'text/xml')
     .send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Play>
-    https://vagnet-production.up.railway.app/public/audio/${lastAudioFile}
-  </Play>
-  <Pause length="5"/>
+  <Play>${audioUrl}</Play>
+  <Pause length="3"/>
 </Response>`)
 })
 
@@ -158,7 +148,7 @@ const start = async () => {
       port: process.env.PORT || 8080,
       host: '0.0.0.0'
     })
-    console.log('✅ Server running on port 8080 (Stage 1)')
+    console.log('✅ Server running on port 8080')
   } catch (err) {
     fastify.log.error(err)
     process.exit(1)
