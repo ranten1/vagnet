@@ -13,6 +13,11 @@ dotenv.config()
 const fastify = Fastify({ logger: true })
 
 /* ===========================
+   GLOBAL STATE (Stage 1)
+   =========================== */
+let lastAudioFile = null
+
+/* ===========================
    Plugins – חייב לפני routes
    =========================== */
 fastify.register(cors, { origin: true })
@@ -67,50 +72,70 @@ fastify.post('/call', async (request, reply) => {
 })
 
 /* ===========================
-   ElevenLabs – יצירת אודיו עברי
+   /generate-audio – ElevenLabs
+   יוצר MP3 ושומר אותו
    =========================== */
 fastify.get('/generate-audio', async (request, reply) => {
   const text =
     request.query.text ||
     'שלום, זו שיחה אוטומטית בקול אנושי בעברית'
 
-  const response = await fetch(
-    'https://api.elevenlabs.io/v1/text-to-speech/JgAHWUAGTYZQ4STOPsRF',
-    {
-      method: 'POST',
-      headers: {
-        'xi-api-key': process.env.ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        text,
-        model_id: 'eleven_multilingual_v2'
-      })
-    }
-  )
+  try {
+    const response = await fetch(
+      'https://api.elevenlabs.io/v1/text-to-speech/JgAHWUAGTYZQ4STOPsRF',
+      {
+        method: 'POST',
+        headers: {
+          'xi-api-key': process.env.ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_multilingual_v2'
+        })
+      }
+    )
 
-  const buffer = Buffer.from(await response.arrayBuffer())
-  const filename = `audio-${Date.now()}.mp3`
-  const filePath = path.join(
-    process.cwd(),
-    'public',
-    'audio',
-    filename
-  )
+    const buffer = Buffer.from(await response.arrayBuffer())
+    const filename = `audio-${Date.now()}.mp3`
+    const filePath = path.join(
+      process.cwd(),
+      'public',
+      'audio',
+      filename
+    )
 
-  await fs.promises.writeFile(filePath, buffer)
+    await fs.promises.writeFile(filePath, buffer)
 
-  reply.send({
-    url: `https://vagnet-production.up.railway.app/public/audio/${filename}`
-  })
+    // ✅ שמירת שם הקובץ האחרון
+    lastAudioFile = filename
+
+    reply.send({
+      url: `https://vagnet-production.up.railway.app/public/audio/${filename}`
+    })
+  } catch (err) {
+    fastify.log.error(err)
+    reply.code(500).send({ error: 'Audio generation failed' })
+  }
 })
 
 /* ===========================
    /voice – Twilio Webhook
+   מנגן MP3 סטטי בלבד
    =========================== */
 fastify.post('/voice', async (request, reply) => {
-  const text =
-    'שלום! זו שיחה עם קול אנושי בעברית. אם אתה שומע אותי, הכל עובד מצוין.'
+  // אם מסיבה כלשהי האודיו לא מוכן – fallback
+  if (!lastAudioFile) {
+    return reply
+      .code(200)
+      .header('Content-Type', 'text/xml')
+      .send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say language="en-US">
+    Audio is not ready yet. Please try again later.
+  </Say>
+</Response>`)
+  }
 
   reply
     .code(200)
@@ -118,9 +143,7 @@ fastify.post('/voice', async (request, reply) => {
     .send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Play>
-    https://vagnet-production.up.railway.app/generate-audio?text=${encodeURIComponent(
-      text
-    )}
+    https://vagnet-production.up.railway.app/public/audio/${lastAudioFile}
   </Play>
   <Pause length="5"/>
 </Response>`)
