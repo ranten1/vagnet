@@ -3,94 +3,80 @@ import cors from '@fastify/cors'
 import formbody from '@fastify/formbody'
 import dotenv from 'dotenv'
 import twilio from 'twilio'
-import fastifyStatic from '@fastify/static'
+import fs from 'fs'
 import path from 'path'
 
 dotenv.config()
 
 const fastify = Fastify({ logger: true })
 
-/* ===========================
-   Plugins
-   =========================== */
 fastify.register(cors, { origin: true })
 fastify.register(formbody)
 
-fastify.register(fastifyStatic, {
-  root: path.join(process.cwd(), 'public'),
-  prefix: '/public/'
-})
-
-/* ===========================
-   Twilio Client
-   =========================== */
 const twilioClient = twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
 )
 
 /* ===========================
-   Health + Ping
+   Health
    =========================== */
-fastify.get('/', async () => ({ ok: true }))
 fastify.get('/ping', async () => ({ pong: true }))
+
+/* ===========================
+   ✅ SERVE AUDIO WITH CORRECT MIME
+   =========================== */
+fastify.get('/audio/:file', async (request, reply) => {
+  const filePath = path.join('public', 'audio', request.params.file)
+
+  if (!fs.existsSync(filePath)) {
+    return reply.code(404).send('Not found')
+  }
+
+  reply
+    .header('Content-Type', 'audio/mpeg')
+    .header('Cache-Control', 'no-store')
+    .send(fs.createReadStream(filePath))
+})
 
 /* ===========================
    CALL – initiate call
    =========================== */
 fastify.post('/call', async (request, reply) => {
   const { number } = request.body || {}
+  if (!number) return reply.code(400).send({ error: 'number required' })
 
-  if (!number) {
-    return reply.code(400).send({ error: 'number is required' })
-  }
+  const filename = 'audio-1765262158067.mp3' // הארדקוד לבדיקת סופית
 
-  try {
-    const call = await twilioClient.calls.create({
-      to: number,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      url: 'https://vagnet-production.up.railway.app/voice',
-      method: 'POST'
-    })
+  const call = await twilioClient.calls.create({
+    to: number,
+    from: process.env.TWILIO_PHONE_NUMBER,
+    url: `https://vagnet-production.up.railway.app/voice?file=${filename}`,
+    method: 'POST'
+  })
 
-    reply.send({
-      success: true,
-      callSid: call.sid
-    })
-  } catch (err) {
-    fastify.log.error(err)
-    reply.code(500).send({ error: err.message })
-  }
+  reply.send({ ok: true, sid: call.sid })
 })
 
 /* ===========================
-   VOICE – HARDCODED PLAY
+   VOICE – Play via /audio
    =========================== */
 fastify.post('/voice', async (request, reply) => {
+  const file = request.query.file
+
   reply
-    .code(200)
-    .header('Content-Type', 'text/xml')
+    .type('text/xml')
     .send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-<Play>https://vagnet-production.up.railway.app/public/audio/audio-1765262158067.mp3</Play>
-<Pause length="5"/>
+  <Play>https://vagnet-production.up.railway.app/audio/${file}</Play>
+  <Pause length="5"/>
 </Response>`)
 })
 
 /* ===========================
-   Start Server
+   Start
    =========================== */
-const start = async () => {
-  try {
-    await fastify.listen({
-      port: process.env.PORT || 8080,
-      host: '0.0.0.0'
-    })
-    console.log('✅ Server running on port 8080 (HARDCODE TEST)')
-  } catch (err) {
-    fastify.log.error(err)
-    process.exit(1)
-  }
-}
-
-start()
+fastify.listen({
+  port: process.env.PORT || 8080,
+  host: '0.0.0.0'
+})
