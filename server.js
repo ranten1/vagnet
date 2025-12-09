@@ -25,7 +25,7 @@ const twilioClient = twilio(
 )
 
 /* ===========================
-   Health
+   Health Check
    =========================== */
 fastify.get('/ping', async () => ({ pong: true }))
 
@@ -53,7 +53,7 @@ fastify.post('/call', async (request, reply) => {
 })
 
 /* ===========================
-   Twilio Voice Webhook
+   ✅ Twilio Voice Webhook
    =========================== */
 fastify.post('/voice', async (request, reply) => {
   console.log('✅ /voice HIT FROM TWILIO')
@@ -63,24 +63,27 @@ fastify.post('/voice', async (request, reply) => {
     .send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="wss://vagnet-production.up.railway.app/stream" />
+    <Stream
+      url="wss://vagnet-production.up.railway.app/stream"
+      track="both_tracks"
+    />
   </Connect>
 </Response>`)
 })
 
 /* ===========================
-   🚨 Media Stream DEBUG (NO AUDIO)
+   🚨 Media Stream DEBUG
    =========================== */
 fastify.get('/stream', { websocket: true }, (connection, req) => {
   console.log('✅ WS CONNECTED FROM TWILIO')
 
   connection.socket.on('message', (message) => {
-    console.log('📨 RAW MESSAGE FROM TWILIO:')
+    console.log('📨 MESSAGE FROM TWILIO:')
     console.log(message.toString())
   })
 
   connection.socket.on('close', () => {
-    console.log('❌ WS CLOSED BY TWILIO')
+    console.log('❌ WS CLOSED')
   })
 
   connection.socket.on('error', (err) => {
@@ -89,7 +92,7 @@ fastify.get('/stream', { websocket: true }, (connection, req) => {
 })
 
 /* ===========================
-   Start server
+   Start Server
    =========================== */
 const start = async () => {
   try {
