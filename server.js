@@ -3,6 +3,10 @@ import cors from '@fastify/cors'
 import formbody from '@fastify/formbody'
 import dotenv from 'dotenv'
 import twilio from 'twilio'
+import fastifyStatic from '@fastify/static'
+import path from 'path'
+import fs from 'fs'
+import fetch from 'node-fetch'
 
 dotenv.config()
 
@@ -13,6 +17,11 @@ const fastify = Fastify({ logger: true })
    =========================== */
 fastify.register(cors, { origin: true })
 fastify.register(formbody)
+
+fastify.register(fastifyStatic, {
+  root: path.join(process.cwd(), 'public'),
+  prefix: '/public/'
+})
 
 /* ===========================
    Twilio Client
@@ -26,7 +35,7 @@ const twilioClient = twilio(
    Health Check
    =========================== */
 fastify.get('/', async () => {
-  return { status: 'ok', message: 'Server is running' }
+  return { status: 'ok', message: 'Server is running (Stage 1)' }
 })
 
 /* ===========================
@@ -58,21 +67,62 @@ fastify.post('/call', async (request, reply) => {
 })
 
 /* ===========================
+   ElevenLabs – יצירת אודיו עברי
+   =========================== */
+fastify.get('/generate-audio', async (request, reply) => {
+  const text =
+    request.query.text ||
+    'שלום, זו שיחה אוטומטית בקול אנושי בעברית'
+
+  const response = await fetch(
+    'https://api.elevenlabs.io/v1/text-to-speech/JgAHWUAGTYZQ4STOPsRF',
+    {
+      method: 'POST',
+      headers: {
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_multilingual_v2'
+      })
+    }
+  )
+
+  const buffer = Buffer.from(await response.arrayBuffer())
+  const filename = `audio-${Date.now()}.mp3`
+  const filePath = path.join(
+    process.cwd(),
+    'public',
+    'audio',
+    filename
+  )
+
+  await fs.promises.writeFile(filePath, buffer)
+
+  reply.send({
+    url: `https://vagnet-production.up.railway.app/public/audio/${filename}`
+  })
+})
+
+/* ===========================
    /voice – Twilio Webhook
    =========================== */
 fastify.post('/voice', async (request, reply) => {
-  console.log('📞 /voice called by Twilio')
-  console.log('Twilio body:', request.body)
+  const text =
+    'שלום! זו שיחה עם קול אנושי בעברית. אם אתה שומע אותי, הכל עובד מצוין.'
 
   reply
     .code(200)
     .header('Content-Type', 'text/xml')
     .send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say language="en-US">
-    Hello ?
-  </Say>
-  <Pause length="10"/>
+  <Play>
+    https://vagnet-production.up.railway.app/generate-audio?text=${encodeURIComponent(
+      text
+    )}
+  </Play>
+  <Pause length="5"/>
 </Response>`)
 })
 
@@ -85,7 +135,7 @@ const start = async () => {
       port: process.env.PORT || 8080,
       host: '0.0.0.0'
     })
-    console.log('✅ Server running on port 8080')
+    console.log('✅ Server running on port 8080 (Stage 1)')
   } catch (err) {
     fastify.log.error(err)
     process.exit(1)
