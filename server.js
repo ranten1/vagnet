@@ -9,7 +9,7 @@ dotenv.config()
 const fastify = Fastify({ logger: true })
 
 /* ===========================
-   Plugins (חייב לפני routes)
+   Plugins – חייב לפני routes
    =========================== */
 fastify.register(cors, { origin: true })
 fastify.register(formbody)
@@ -30,7 +30,7 @@ fastify.get('/', async () => {
 })
 
 /* ===========================
-   /call – יצירת שיחה
+   /call – יצירת שיחה יוצאת
    =========================== */
 fastify.post('/call', async (request, reply) => {
   const { number } = request.body || {}
@@ -69,9 +69,10 @@ fastify.post('/voice', async (request, reply) => {
     .header('Content-Type', 'text/xml')
     .send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say language="he-IL">
-    שלום גל! זו שיחת בדיקה. האם את שומעת אותי, הכל עובד מצוין.
+  <Say language="en-US">
+    Hello ?
   </Say>
+  <Pause length="10"/>
 </Response>`)
 })
 
