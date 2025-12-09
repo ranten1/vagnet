@@ -17,7 +17,7 @@ fastify.register(formbody)
 fastify.register(websocket)
 
 /* ===========================
-   Twilio client
+   Twilio Client
    =========================== */
 const twilioClient = twilio(
   process.env.TWILIO_ACCOUNT_SID,
@@ -39,25 +39,25 @@ fastify.post('/call', async (request, reply) => {
     return reply.code(400).send({ error: 'number is required' })
   }
 
-  try {
-    const call = await twilioClient.calls.create({
-      to: number,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      url: 'https://vagnet-production.up.railway.app/voice',
-      method: 'POST'
-    })
+  const call = await twilioClient.calls.create({
+    to: number,
+    from: process.env.TWILIO_PHONE_NUMBER,
+    url: 'https://vagnet-production.up.railway.app/voice',
+    method: 'POST'
+  })
 
-    reply.send({ success: true, callSid: call.sid })
-  } catch (err) {
-    fastify.log.error(err)
-    reply.code(500).send({ error: err.message })
-  }
+  reply.send({
+    success: true,
+    callSid: call.sid
+  })
 })
 
 /* ===========================
    Twilio Voice Webhook
    =========================== */
 fastify.post('/voice', async (request, reply) => {
+  console.log('✅ /voice HIT FROM TWILIO')
+
   reply
     .type('text/xml')
     .send(`<?xml version="1.0" encoding="UTF-8"?>
@@ -69,39 +69,22 @@ fastify.post('/voice', async (request, reply) => {
 })
 
 /* ===========================
-   ✅ Media Stream (μ-law BEEP)
+   🚨 Media Stream DEBUG (NO AUDIO)
    =========================== */
-fastify.get('/stream', { websocket: true }, (connection) => {
-  console.log('🎧 Twilio Media Stream connected')
+fastify.get('/stream', { websocket: true }, (connection, req) => {
+  console.log('✅ WS CONNECTED FROM TWILIO')
 
   connection.socket.on('message', (message) => {
-    const data = JSON.parse(message.toString())
-
-    if (data.event === 'start') {
-      console.log('▶ Stream START')
-
-      // ✅ μ-law 8kHz beep – בוודאות נשמע
-      const payload =
-        'f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39='
-
-      connection.socket.send(
-        JSON.stringify({
-          event: 'media',
-          streamSid: data.streamSid,
-          media: {
-            payload
-          }
-        })
-      )
-    }
-
-    if (data.event === 'stop') {
-      console.log('⏹ Stream STOP')
-    }
+    console.log('📨 RAW MESSAGE FROM TWILIO:')
+    console.log(message.toString())
   })
 
   connection.socket.on('close', () => {
-    console.log('🔌 Stream disconnected')
+    console.log('❌ WS CLOSED BY TWILIO')
+  })
+
+  connection.socket.on('error', (err) => {
+    console.error('❌ WS ERROR:', err)
   })
 })
 
